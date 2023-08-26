@@ -1,4 +1,13 @@
 export default function getList(){
+    // const express = require('express');
+    // const app = express();
+    // app.get('/get',async(req)=>{
+    //     const text="~~Todo-List~~"
+        
+    //     for(const n=0; n<req.length;n++){
+    //         text+="\n"+req[n].title
+    //     }
+    // })
     const tasks=[
         {
           "title": "クリーニングを取りに行く",
