@@ -1,42 +1,44 @@
 const functions = require("firebase-functions");
 const line = require("@line/bot-sdk");
-const express = require('express');
-const { event } = require("firebase-functions/v1/analytics");
-const app = express();
+const axios=require("axios");
+require("dotenv").config();
+const url=process.env.URL;
 const config = {
-  channelAccessToken: functions.config().channel.accesstoken,
-  channelSecret: functions.config().channel.secret,
+  channelAccessToken:process.env.LINE_ACCESS_TOKEN,
+  channelSecret: process.env.LINE_SEACRET,
 };
-
 const client = new line.Client(config);
 
-/**
- * Hello World関数
- */
+exports.helloWorld = functions.https.onRequest(async (req, res) => {
+  try {
+
+    const event = req.body.events[0];
+    console.log("req: "+req)
+    await checkMes(event);
+    
+    res.status(200).end();
+  } catch (error) {
+    console.error("Error processing request:", error);
+    res.status(500).send("Internal Server Error");
+  }
+});
 async function checkMes(event){
   switch(event.message.text){
     case ">>表示":
-      const text = getList();
-      await client.replyMessage(event.replyToken, { type: "text", text: text });
+      const str =await getList();
+      client.replyMessage(event.replyToken, { type: "text", text: str });
       break;
     default:
       if(event.message.text.indexOf('追加:') !== -1){
-        try{
-          const out=postTask(event);
-          await client.replyMessage(event.replyToken, [{ type: "text", text: "追加に成功しました" },{type:"text",text:"追加内容:"+out}]);
-        }
-        catch{
-          client.replyMessage(event.replyToken, { type: "text", text: "追加に失敗しました" });
-          console.error();
-        }    
+          await postTask(event);
+          await client.replyMessage(event.replyToken, [{type:"text",text:"追加内容: ["+event.message.text.split(":")[1]+"]"}]);
     }else if(event.message.text.indexOf('完了:') !== -1){
       try{
-        const out=staToggle(event);
-        await client.replyMessage(event.replyToken, [{ type: "text", text: "変更に成功しました" },{type:"text",text:"内容:"+out.title+"\n"+out.id+"\n"+out.done}]);
+        await staToggle(event);
+        await client.replyMessage(event.replyToken, [{ type: "text", text: "変更に成功しました" },{ type: "text", text: "完了: ["+event.message.text.split(":")[1]+"]" }]);
       }
-      catch{
-        client.replyMessage(event.replyToken, { type: "text", text: "変更に失敗しました" });
-        console.error();
+      catch(e){
+        client.replyMessage(event.replyToken, { type: "text", text: "変更に失敗しました" },{type:"text",text:e.message});
       }    
     }
       break;
@@ -44,91 +46,67 @@ async function checkMes(event){
 
 }
 
-exports.helloWorld = functions.https.onRequest(async (req, res) => {
-  try {
-    // リクエストボディからイベントを取得
-    const event = req.body.events[0];
-    
-    // リクエストボディの正しいフォーマットを確認
-    if (!event || !event.replyToken || !event.message || !event.message.text) {
-      console.error("Invalid request body format.");
-      res.status(400).send("Invalid request body format.");
-      return;
+
+async function getList(){
+      try{
+        const response =await axios.get(url+"/tasks");
+        const data = await response.data;
+        console.log("response: " + data)
+        let check;
+        let tex="~~Todo-List~~ "   
+        for (let n=0;n < data.length ; n++) {
+          if(data[n].done){check="☑"}else{check="☐"};
+          tex += "\n"+check+". "+data[n].title;
+        }
+        return tex;
+      }catch(e){
+        const text ="データの取得に失敗しました"+e.message
+        return text;
+      }  
     }
-    // Hello Worldを送信する。
-    //  await client.replyMessage(event.replyToken, {
-    //    type: "text",
-    //    text: event.message.text,
-    //  });
-    await checkMes(event);
+  
 
-    res.status(200).send();
-  } catch (error) {
-    console.error("Error processing request:", error);
-    res.status(500).send("Internal Server Error");
-  }
-});
-
-function getList(){
-    // app.get('/get',async(req)=>{
-    //     const text="~~Todo-List~~"   
-    //     for(const n=0; n<req.length;n++){
-    //         text+="\n"+req[n].title
-    //     }
-    // })
-  const tasks=[
-      {
-        "title": "クリーニングを取りに行く",
-        "id": 0,
-        "done": false,
-      },
-      {
-          "title": "クリーニングを取りに行く",
-          "id": 0,
-          "done": false,
-        },
-      {
-          "title": "クリーニングを取りに行く",
-          "id": 0,
-          "done": false,
-      },
-      {
-          "title": "クリーニングを取りに行く",
-          "id": 0,
-          "done": false,
-      },
-  ];
-  let text="~~Todo-List~~";
-      
-  for(var n=0; n<tasks.length;n++){
-      text+="\n"+n+"."+tasks[n].title;
-  };
-  return text;
-}
-
-function postTask(event){
-  const str = event.message.text.split(":")
-  app.post("/post",async(res)=>{
-    res.send({
-      "title": str[1],
-    })
-  })
-  return str[1]
-}
-
-function staToggle(event){
-  const id_key=undefined;
-  app.get("/",(req)=>{
-    for(const n=0;n<req.length;n++){
-      if(event.message.text.split(":")[1]===req[n].title){
-        id_key=req[n].id
-        break;
+ async function postTask(event){
+        const str = event.message.text.split(":")
+        try{
+          await axios.post(url+"/tasks",{
+            "title":str[1]
+          });
+        }catch(e){
+          throw new Error();
+        }
       }
-    }  
-  },
-app.post("/"+id_key+"/done",(res)=>{
-  res.send({
-    "id":id_key
-  })
-})
-)}
+    
+      
+    async function staToggle(event){
+      const response=await axios.get(url+"/tasks")
+      const data=await response.data;
+      for (let n=0;n<data.length;n++){
+        if(String(event.message.text.split(":")[1])===data[n].title){
+          let config = {
+            method: 'put',
+            maxBodyLength: Infinity,
+            url: url+'/tasks/'+data[n].id+'/done',
+            headers: { 
+              'Content-Type': 'application/json'
+            },
+            data : {
+              "id":Number(data[n].id)
+            }
+          };
+          axios.request(config)
+          .then((response) => {
+            console.log(JSON.stringify(response.data));
+          })
+          .catch((error) => {
+            console.log(error);
+          });
+          break;
+        }
+      }
+
+      // axios.put(url+"/tasks/"+String(key_id)+"/done",{
+      //   "id":Number(key_id),
+      // })
+    }
+    
